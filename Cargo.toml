@@ -1,0 +1,11 @@
+[package]
+name = "first-uefi-app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+embedded-graphics = "0.8.1"
+embedded-graphics-core = "0.4.0"
+log = "0.4.22"
+tinybmp = "0.6.0"
+uefi = { version = "0.33.0", features = ["logger", "panic_handler"] }

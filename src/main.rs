@@ -1,41 +1,43 @@
 #![no_main]
 #![no_std]
 
+mod status_error;
+use status_error::StatusError as StatErr;
+
 use core::ptr::write_volatile;
 use log::{info, error};
 use uefi::prelude::*;
 use uefi::boot::{open_protocol_exclusive, get_handle_for_protocol};
-use uefi::proto::console::gop::{BltPixel, GraphicsOutput};
+use uefi::proto::console::{gop::{BltPixel, GraphicsOutput}, pointer::{Pointer}};
 use tinybmp::Bmp;
 use embedded_graphics::pixelcolor::{Rgb888, RgbColor};
 // use embedded_graphics_core::geometry::{OriginDimensions, Size};
 
 #[entry]
-fn main() -> Status {
+fn _main() -> Status {
+
+    match main() {
+        Ok(_) => Status::SUCCESS,
+        Err(StatErr(stat, err)) => {
+            if let Some(err) = err {
+                error!("Error: {err}");
+            }
+            boot::stall(FIVE_SECONDS);
+            stat 
+        }
+    }
+}
+
+fn main() -> Result<(), StatErr> {
     uefi::helpers::init().unwrap();
     info!("Welcome to my first UEFI project!");
     boot::stall(TWO_SECONDS);
 
-    let graphics_handle = match get_handle_for_protocol::<GraphicsOutput>() {
-        Ok(handle) => handle,
-        Err(e) => {
-            error!("Error getting graphics handle: {e}");
-            boot::stall(FIVE_SECONDS);
-            return Status::DEVICE_ERROR;
-        }
-    };
-
-    let mut graphics_protocol = match open_protocol_exclusive::<GraphicsOutput>(graphics_handle) {
-        Ok(prot) => prot,
-        Err(e) => {
-            error!("Error getting graphics protocol: {e}");
-            boot::stall(FIVE_SECONDS);
-            return Status::DEVICE_ERROR;
-        }
-    };
+    let graphics_handle = get_handle_for_protocol::<GraphicsOutput>().map_err(|e| (Status::DEVICE_ERROR, e))?;
+    let mut graphics_protocol = open_protocol_exclusive::<GraphicsOutput>(graphics_handle).map_err(|e| (Status::DEVICE_ERROR, e))?;
 
     if let Err(status) = draw(&mut graphics_protocol) {
-        return status;
+        return Err(StatErr(status, None));
     }
 
     loop {
@@ -60,6 +62,8 @@ fn draw(gop: &mut GraphicsOutput) -> Result<(), Status> {
         let c = pixel.1;
         let blt_pixel = BltPixel::new(c.r(), c.g(), c.b());
         unsafe { 
+            write_volatile(frame_buff_ptr, blt_pixel);
+            frame_buff_ptr = frame_buff_ptr.add(1);
             write_volatile(frame_buff_ptr, blt_pixel);
             frame_buff_ptr = frame_buff_ptr.add(1);
         }
